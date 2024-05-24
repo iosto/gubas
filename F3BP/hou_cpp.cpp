@@ -75,6 +75,11 @@ struct parameters{
     mat* tt_1;//tidal torque on the primary caused by the secondary
     mat* tt_2;//tidal torque on the secondary causecd by the primary
     mat* tt_orbit;//acceleration on the orbit due to tidal torque
+    double* mass_third;
+	double* srp_third;
+	double* cr_third;
+	double* area_third;
+	double* sgrav_third;
 } inputs;
 
 // structure used to take in inputs file ("ic_inputs.txt")
@@ -135,6 +140,11 @@ struct initialization{
     double eps1;//primary tidal lag angle (related to quality factor Q)
     double eps2;//secondasry tidal lag angle (related to quality factor Q)
     double Msun;//solar mass
+    double mass_third;
+	double srp_third;
+	double cr_third;
+	double area_third;
+	double sgrav_third;
 } ics;
 
 //function declarations - descriptions at file definitions
@@ -178,6 +188,7 @@ vec kepler2cart(double* a_hyp, double* e_hyp, double* i_hyp, double* RAAN_hyp, d
 double kepler(double* n_hyp, double t, double* e_hyp, double* tau_hyp);
 void grav_3BP(vec R_s, mat* NA, mat* pos, double* nu, double* G, double* Mplanet, mat* acc_3BP);
 void solar_accel(vec R_s, mat* NA, mat* pos, double* nu, double* G, double* Msun, mat* acc_solar);
+void srp_accel(vec R_s, mat* NA, mat* pos, double M, double Cr, double area, mat* acc_srp);
 
 int main() {
     cout.precision(16);
@@ -359,6 +370,11 @@ int main() {
     inputs.tt_2=&tt_2;
     inputs.tt_orbit=&tt_orbit;
     inputs.mean_motion=&mean_motion;
+    inputs.mass_third=&ics.mass_third;
+	inputs.srp_third=&ics.srp_third;
+	inputs.cr_third=&ics.cr_third;
+	inputs.area_third=&ics.area_third;
+	inputs.sgrav_third=&ics.sgrav_third;
     //set up integration time matrix
     mat t(1,1);
     t<<t0<<endr;
@@ -369,8 +385,8 @@ int main() {
         rk4_stack(t0, tf, x0, ics.h, inputs,&t_sol, &x_sol, &h_sol, &sun_sol, hou_ode);
     }
     else if (ics.integ==2){
-        cout<<"LGVI"<<endl;//LGVI integrator
-        LGVI_integ(t0, tf, x0, ics.h, inputs, &t_sol, &x_sol);
+        // cout<<"LGVI"<<endl;//LGVI integrator
+        // LGVI_integ(t0, tf, x0, ics.h, inputs, &t_sol, &x_sol);
     }
     else if (ics.integ==3){
         cout<<"RK 7(8)"<<endl;//RK7 (8) integrator
@@ -1975,6 +1991,8 @@ mat hou_ode(mat x, mat t, parameters inputs){
     mat Ic_inv(3,3),Is_inv(3,3);
     double R=norm(r,2);//used for potential
     mat e=r.t()/R;//used for potential, must be row vec
+    double R3=norm(r3,2);//used for potential 3rd body
+    mat e3=r3.t()/R3;//used for potential 3rd body, must be row vec
     Ic_inv<<1./ (*(inputs.IA))(0,0)<<0.<<0.<<endr<<0.<<1./ (*(inputs.IA))(0,1)<<0.<<endr<<0.<<0.<<1./ (*(inputs.IA))(0,2)<<endr;
     Is_inv<<1./ (*(inputs.IB))(0,0)<<0.<<0.<<endr<<0.<<1./ (*(inputs.IB))(0,1)<<0.<<endr<<0.<<0.<<1./ (*(inputs.IB))(0,2)<<endr;
     mat Is_inv_c=C*Is_inv*C.t();
@@ -2122,8 +2140,61 @@ mat hou_ode(mat x, mat t, parameters inputs){
     //because of use of C and Cd must accounrt for partial of rotated inertia matrix with respect to time
     mat wsd=Is_inv_c*(cross(Lb,wc)+Mb-Cd*diagmat(*(inputs.IB))*C.t()*ws
             -C*diagmat(*(inputs.IB))*CdT*ws-(*(inputs.tt_2)));
+
+    //////////////////// 3rd body (inertial coordinates) //////////////////// 
+    mat Irot = mat(3,3,fill::eye);
+    vec R_3a = r3+(*inputs.nu)*(r);
+    vec R_3b = r3-(1-(*inputs.nu))*(r);
+    double R3a_mag = norm(R_3a,2);
+    double R3b_mag = norm(R_3b,2);  
+    mat e_3a = R_3a.t()/R3a_mag;
+    mat e_3b = R_3b.t()/R3b_mag; 
+
+    // Compute dU_dr of 3rd body
+    cube TSC;
+    double mass_3rd = *(inputs.mass_third);
+    TSC.zeros(size(*(inputs.TA)));
+    TSC(0,0,0)=mass_3rd;
+    mat du_dr3a(3,1),du_dr3b(3,1);
+    du_dr3a(0,0)=du_x(*(inputs.G), *(inputs.n),inputs.tk, inputs.a, inputs.b, e_3a, R3a_mag, 0, inputs.TA, &TSC);
+    du_dr3a(1,0)=du_x(*(inputs.G), *(inputs.n),inputs.tk, inputs.a, inputs.b, e_3a, R3a_mag, 1, inputs.TA, &TSC);
+    du_dr3a(2,0)=du_x(*(inputs.G), *(inputs.n),inputs.tk, inputs.a, inputs.b, e_3a, R3a_mag, 2, inputs.TA, &TSC);
+
+    du_dr3b(0,0)=du_x(*(inputs.G), *(inputs.n),inputs.tk, inputs.a, inputs.b, e_3b, R3b_mag, 0, inputs.TBp, &TSC);
+    du_dr3b(1,0)=du_x(*(inputs.G), *(inputs.n),inputs.tk, inputs.a, inputs.b, e_3b, R3b_mag, 1, inputs.TBp, &TSC);
+    du_dr3b(2,0)=du_x(*(inputs.G), *(inputs.n),inputs.tk, inputs.a, inputs.b, e_3b, R3b_mag, 2, inputs.TBp, &TSC);
+
+    // Sun gravity
+    mat acc_solar(3,1);
+    vec R_sun;
+    if (*(inputs.sgrav_third)==1){
+        double f0_helio = kepler(inputs.n_helio, time, inputs.e_helio, inputs.tau_helio);
+        vec X_sun = kepler2cart(inputs.a_helio, inputs.e_helio, inputs.i_helio, inputs.RAAN_helio, inputs.om_helio, f0_helio, inputs.G, inputs.Msolar);
+        R_sun<<X_sun(0)<<endr<<X_sun(1)<<endr<<X_sun(2)<<endr;
+        solar_accel(R_sun, &Irot, &r3, inputs.nu, inputs.G, inputs.Msolar, &acc_solar);
+    } else {
+        acc_solar.zeros();
+    }
+
+    // SRP
+    mat acc_srp(3,1);
+    if (*(inputs.srp_third)==1){
+        double Cr = *(inputs.cr_third);
+        double area = *(inputs.area_third);
+        double f0_helio = kepler(inputs.n_helio, time, inputs.e_helio, inputs.tau_helio);
+        vec X_sun = kepler2cart(inputs.a_helio, inputs.e_helio, inputs.i_helio, inputs.RAAN_helio, inputs.om_helio, f0_helio, inputs.G, inputs.Msolar);
+        R_sun<<X_sun(0)<<endr<<X_sun(1)<<endr<<X_sun(2)<<endr;
+        srp_accel(R_sun, &Irot, &r3, mass_3rd, Cr, area, &acc_srp);
+    } else {
+        acc_srp.zeros();
+    }
+
+    // Total acceleration in A frame for 3rd body    
+    mat r3d = v3;
+    mat v3d = -1/mass_3rd * (du_dr3a + du_dr3b) + acc_srp + acc_solar;
+
     //repack EOM results
-    mat xd(30,1);
+    mat xd(36,1);
     xd<<rd(0,0)<<endr<<rd(1,0)<<endr<<rd(2,0)<<endr<<vd(0,0)<<endr<<vd(1,0)<<
             endr<<vd(2,0)<<endr<<wcd(0,0)<<endr<<wcd(1,0)<<endr<<wcd(2,0)<<endr<<
             wsd(0,0)<<endr<<wsd(1,0)<<endr<<wsd(2,0)<<endr<<Cdc(0,0)<<endr<<
@@ -2131,7 +2202,9 @@ mat hou_ode(mat x, mat t, parameters inputs){
             Cdc(1,2)<<endr<<Cdc(2,0)<<endr<<Cdc(2,1)<<endr<<Cdc(2,2)<<endr<<
             Cd(0,0)<<endr<<Cd(0,1)<<endr<<Cd(0,2)<<endr<<Cd(1,0)<<endr<<
             Cd(1,1)<<endr<<Cd(1,2)<<endr<<Cd(2,0)<<endr<<Cd(2,1)<<endr<<
-            Cd(2,2)<<endr;
+            Cd(2,2)<<endr<<
+            r3d(0,0)<<endr<<r3d(1,0)<<endr<<r3d(2,0)<<endr<<
+            v3d(0,0)<<endr<<v3d(1,0)<<endr<<v3d(2,0)<<endr;
     return xd;
 }
 
@@ -2162,6 +2235,14 @@ void solar_accel(vec R_s, mat* NA, mat* pos, double* nu, double* G, double* Msun
     R_s = (*NA).t()*R_s;
     vec R = (*pos);
     (*acc_solar) = (*G)*(*Msun)*((R_s-(1-(*nu)*R))/(pow(norm(R_s-(1-(*nu)*R)),3))-(R_s+(*nu)*R)/(pow(norm(R_s+(*nu)*R),3)));
+}
+
+// This calculates the SRP on the 3rd body
+void srp_accel(vec R_s, mat* NA, mat* pos, double M, double Cr, double area, mat* acc_srp){
+    double AU = 1.495e8;
+    R_s = (*NA).t()*R_s;
+    vec R = (*pos);
+    (*acc_srp) = -0.00456 * pow(AU/norm(R_s), 2) * (Cr*area)/M * R_s/norm(R_s);
 }
 
 // This calculates the tidal torque between both bodies and the orbit in order to simulate energy dissipation due to internal tidal effects
@@ -2276,9 +2357,9 @@ double kepler(double *n_hyp, double t, double *e_hyp, double *tau_hyp){
 void ic_read(initialization* ics){
     //set up local variable
     int order, order_a, order_b, a_shape, b_shape, Tgen, integ, flyby_toggle, helio_toggle, sg_toggle, tt_toggle;
-    double G,rhoA,rhoB,aA,bA,cA,aB,bB,cB,t0,tf,h,tol,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio, sol_rad, au_def, love1, love2, refrad1, refrad2, eps1, eps2, Msun;
+    double G,rhoA,rhoB,aA,bA,cA,aB,bB,cB,t0,tf,h,tol,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio, sol_rad, au_def, love1, love2, refrad1, refrad2, eps1, eps2, Msun,mass_third,srp_third,cr_third,area_third,sgrav_third;
     string TAfile,TBfile,IAfile,IBfile,tfa,vfa,tfb,vfb;
-    mat x0(1,30);
+    mat x0(1,36);
     string line;
     //standard io reading - all units expected in km kg sec-------##########
     ifstream myfile ("ic_input.txt");
@@ -2331,7 +2412,7 @@ void ic_read(initialization* ics){
         tfb=line;//secondary tet file
         getline (myfile,line);
         vfb=line;//secondary vert file
-        for(int n=0;n<30;n++){//read in states [r,v,wc,ws,Cc,C]
+        for(int n=0;n<36;n++){//read in states [r,v,wc,ws,Cc,C,r3,v3]
             getline (myfile,line);
             std::size_t temp=0;
             x0(0,n)=std::stod(line);
@@ -2398,6 +2479,16 @@ void ic_read(initialization* ics){
         eps2=std::stod(line);
         getline (myfile,line);
         Msun=std::stod(line);
+        getline (myfile,line);
+        mass_third=std::stod(line);
+        getline (myfile,line);
+        srp_third=std::stod(line);
+        getline (myfile,line);
+        cr_third=std::stod(line);
+        getline (myfile,line);
+        area_third=std::stod(line);
+        getline (myfile,line);
+        sgrav_third=std::stod(line);
         myfile.close();
     }
     else{
@@ -2460,6 +2551,11 @@ void ic_read(initialization* ics){
     (*ics).eps1=eps1;
     (*ics).eps2=eps2;
     (*ics).Msun=Msun;
+    (*ics).mass_third=mass_third;
+    (*ics).srp_third=srp_third;
+    (*ics).cr_third=cr_third;
+    (*ics).area_third=area_third;
+    (*ics).sgrav_third=sgrav_third;
     return;
 }
 

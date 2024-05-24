@@ -69,6 +69,12 @@ def hou_config_read(filename):
     eps1 = CFG.getfloat("Additional Forces and Perturbations","Primary Tidal Lag Angle")
     eps2 = CFG.getfloat("Additional Forces and Perturbations","Secondary Tidal Lag Angle")
     Msun = CFG.getfloat("Additional Forces and Perturbations","Sun Mass")
+
+    mass_third = CFG.getfloat("3rd body Settings","Mass")
+    srp_third = CFG.getfloat("3rd body Settings","SRP")
+    cr_third = CFG.getfloat("3rd body Settings","Cr")
+    area_third = CFG.getfloat("3rd body Settings","Area")*1e-6
+    sgrav_third = CFG.getfloat("3rd body Settings","SunGravity3rd")
     
     # check initial conditions type with fahnestock flag
     if fahnestock_flag==1:
@@ -84,7 +90,7 @@ def hou_config_read(filename):
         rhoB=CFG.getfloat("Body Model Definitions","Secondary Density")*1.e12
         
         # get initial conditions - convert to km kg s units
-        x0=np.zeros([30])
+        x0=np.zeros([36])
         x0[0]=CFG.getfloat("Initial Conditions","Relative Position X")/1000.
         x0[1]=CFG.getfloat("Initial Conditions","Relative Position Y")/1000.
         x0[2]=CFG.getfloat("Initial Conditions","Relative Position Z")/1000.
@@ -137,6 +143,12 @@ def hou_config_read(filename):
                 [-np.cos(th2)*np.sin(th3),-np.sin(th1)*np.sin(th2)*np.sin(th3)+np.cos(th1)*np.cos(th3),np.cos(th1)*np.sin(th2)*np.sin(th3)+np.sin(th1)*np.cos(th3)],\
                 [np.sin(th2),-np.sin(th1)*np.cos(th2),np.cos(th1)*np.cos(th2)]]).T  
             x0[12:21]=np.reshape(Cc,[1,9])
-    
+        x0[30]=CFG.getfloat("Initial Conditions","3rd body Relative Position X")/1000.
+        x0[31]=CFG.getfloat("Initial Conditions","3rd body Relative Position Y")/1000.
+        x0[32]=CFG.getfloat("Initial Conditions","3rd body Relative Position Z")/1000.
+        x0[33]=CFG.getfloat("Initial Conditions","3rd body Relative Velocity X")/1000.
+        x0[34]=CFG.getfloat("Initial Conditions","3rd body Relative Velocity Y")/1000.
+        x0[35]=CFG.getfloat("Initial Conditions","3rd body Relative Velocity Z")/1000.
         x0[9:12]=np.dot(C,np.array([x0[9:12]]).T).T[0]
-    return(G,n,nA,nB,aA,bA,cA,aB,bB,cB,a_shape,b_shape,rhoA,rhoB,t0,tf,tet_fileA,vert_fileA,tet_fileB,vert_fileB,x0,Tgen,integ,h,tol,out_freq,out_time_name,case,flyby_toggle,helio_toggle,sg_toggle,tt_toggle,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio,sol_rad,au_def,love1,love2,refrad1,refrad2,eps1,eps2,Msun,postProcessing)
+
+    return(G,n,nA,nB,aA,bA,cA,aB,bB,cB,a_shape,b_shape,rhoA,rhoB,t0,tf,tet_fileA,vert_fileA,tet_fileB,vert_fileB,x0,Tgen,integ,h,tol,out_freq,out_time_name,case,flyby_toggle,helio_toggle,sg_toggle,tt_toggle,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio,sol_rad,au_def,love1,love2,refrad1,refrad2,eps1,eps2,Msun,postProcessing,mass_third,srp_third,cr_third,area_third,sgrav_third)

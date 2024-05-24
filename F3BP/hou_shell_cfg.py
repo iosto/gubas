@@ -1,3 +1,5 @@
+import os
+os.chdir('/users/fodde/gubas/F3BP')
 import scipy.integrate as integ
 import scipy.io as io
 # import matplotlib.pyplot as plots
@@ -28,7 +30,7 @@ exec(open('hou_config_funcs.py').read())# Config file readin
 
 ## variables
 # read in config file
-(G,n,nA,nB,aA,bA,cA,aB,bB,cB,a_shape,b_shape,rhoA,rhoB,t0,tf,tet_fileA,vert_fileA,tet_fileB,vert_fileB,x0,Tgen,integ,h,tol,out_freq,out_time_name,case,flyby_toggle,helio_toggle,sg_toggle,tt_toggle,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio,sol_rad,au_def,love1,love2,refrad1,refrad2,eps1,eps2,Msun,postProcessing)=hou_config_read("hou_config.cfg")
+(G,n,nA,nB,aA,bA,cA,aB,bB,cB,a_shape,b_shape,rhoA,rhoB,t0,tf,tet_fileA,vert_fileA,tet_fileB,vert_fileB,x0,Tgen,integ,h,tol,out_freq,out_time_name,case,flyby_toggle,helio_toggle,sg_toggle,tt_toggle,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio,sol_rad,au_def,love1,love2,refrad1,refrad2,eps1,eps2,Msun,postProcessing,mass_third,srp_third,cr_third,area_third,sgrav_third)=hou_config_read("hou_config.cfg")
 n=max(nA,nB) # set mutual potential expansion order to max inertia integral expansion order
 print("\n### Expansion Order Set To: {val} ###\n".format(val=n))
 
@@ -91,10 +93,10 @@ else:
 
 ## write cpp input file
 write_icfile(G,n,nA,nB,aA,bA,cA,aB,bB,cB,a_shape,b_shape,rhoA,rhoB,t0,tf,"TDP_"+str(n)+".mat","TDS_"+str(n)+".mat","IDP.mat","IDS.mat",\
-	tet_fileA,vert_fileA,tet_fileB,vert_fileB,x0,Tgen,integ,h,tol,flyby_toggle,helio_toggle,sg_toggle,tt_toggle,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio,sol_rad,au_def,love1,love2,refrad1,refrad2,eps1,eps2,Msun)
+	tet_fileA,vert_fileA,tet_fileB,vert_fileB,x0,Tgen,integ,h,tol,flyby_toggle,helio_toggle,sg_toggle,tt_toggle,Mplanet,a_hyp,e_hyp,i_hyp,RAAN_hyp,om_hyp,tau_hyp,Msolar,a_helio,e_helio,i_helio,RAAN_helio,om_helio,tau_helio,sol_rad,au_def,love1,love2,refrad1,refrad2,eps1,eps2,Msun,mass_third,srp_third,cr_third,area_third,sgrav_third)
 
 ## call cpp exe
-subprocess.call(["./hou_cpp_final"])
+subprocess.call(["./hou_cpp_final_3rd"])
 
 print(datetime.datetime.now())
 
@@ -130,7 +132,7 @@ Izz_s=IB[0,2]
 mu=G*(Mc+Ms)
 
 ## post processing
-row_len=30 # xout.bin has row entries of length 30 (30 integrated state variables)
+row_len=36 # xout.bin has row entries of length 36 (36 integrated state variables)
 print('Post Processing...')
 if not postProcessing:
 	print("Just kidding, we are not post processing. Outputing output_t/t_out.bin and output_x/x_out.bin only.")
@@ -207,6 +209,8 @@ if out_freq==-1 or integ==3: # if a output time file or rk 7(8) are used enter t
 	H=np.zeros([1,3])
 	rpos=np.zeros([1,3])
 	lvel=np.zeros([1,3])
+	rpos3=np.zeros([1,3])
+	lvel3=np.zeros([1,3])
 	lwc=np.zeros([1,3])
 	lws=np.zeros([1,3])
 	rmom=np.zeros([1,3])
@@ -231,6 +235,8 @@ if out_freq==-1 or integ==3: # if a output time file or rk 7(8) are used enter t
 			rpos[0]=np.array([u[0:3]])*1000.# relative position in A
 			vel=np.dot(cc,np.array([u[3:6]]).T)# relative vel in N
 			lvel[0]=np.array([u[3:6]])*1000.# relative vel in A
+			rpos3[0]=np.array([u[30:33]])*1000.# relative position of 3rd body in A
+			lvel3[0]=np.array([u[33:36]])*1000.# relative vel of 3rd body in A
 			rmom[0]=m*np.array([u[3:6]])*1000. # relative lin mom
 			wc=np.array([u[6:9]]).T# primary ang vel in A frame
 			ws=np.dot(c.T,np.array([u[9:12]]).T)# secondary ang vel in B frame
@@ -258,9 +264,9 @@ if out_freq==-1 or integ==3: # if a output time file or rk 7(8) are used enter t
 			dE=(E0-E)/E
 			dH=(la.norm(H0)-la.norm(H))/la.norm(H0)
 
-			lstateout=np.c_[tsett,rpos,lvel,lwc,lws,C_store,Cc_store,U*(1000.**2)]# lagrangian states set
-			fhstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,fCc_store,U*(1000.**2)]# fahnestock formatted hamiltonian states set
-			hstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,Cc_store,U*(1000.**2)]# hamiltonian states set
+			lstateout=np.c_[tsett,rpos,lvel,lwc,lws,C_store,Cc_store,U*(1000.**2), rpos3, lvel3]# lagrangian states set
+			fhstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,fCc_store,U*(1000.**2), rpos3, lvel3]# fahnestock formatted hamiltonian states set
+			hstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,Cc_store,U*(1000.**2), rpos3, lvel3]# hamiltonian states set
 			L_w.writerow(lstateout[0])
 			FH_w.writerow(fhstateout[0])
 			H_w.writerow(hstateout[0])
@@ -288,6 +294,8 @@ else:# if every time step or fixed output frequency do this post processing
 	H=np.zeros([1,3])
 	rpos=np.zeros([1,3])
 	lvel=np.zeros([1,3])
+	rpos3=np.zeros([1,3])
+	lvel3=np.zeros([1,3])
 	lwc=np.zeros([1,3])
 	lws=np.zeros([1,3])
 	temp=np.zeros([1,3])
@@ -322,6 +330,8 @@ else:# if every time step or fixed output frequency do this post processing
 		r=np.dot(cc,np.array([u[0:3]]).T)# rel pos in N
 		rpos[0]=np.array([u[0:3]])*1000.# rel pos in A
 		vel=np.dot(cc,np.array([u[3:6]]).T)# rel vel in N
+		rpos3[0]=np.array([u[30:33]])*1000.# relative position of 3rd body in A
+		lvel3[0]=np.array([u[33:36]])*1000.# relative vel of 3rd body in A
 		lvel[0]=np.array([u[3:6]])*1000.# rel vel in A
 		rmom[0]=m*np.array([u[3:6]])*1000.# rel mom in A
 		wc=np.array([u[6:9]]).T# primary ang vel
@@ -358,9 +368,9 @@ else:# if every time step or fixed output frequency do this post processing
 			rhelio[0]=np.array([solar[0:3]])
 			vhelio[0]=np.array([solar[3:6]])
 
-		lstateout=np.c_[tsett,rpos,lvel,lwc,lws,C_store,Cc_store,U*(1000.**2)]# lagrangian states set
-		fhstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,fCc_store,U*(1000.**2)]# fahnestock formatted hamiltonian states set
-		hstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,Cc_store,U*(1000.**2)]# hamiltonian states set
+		lstateout=np.c_[tsett,rpos,lvel,lwc,lws,C_store,Cc_store,U*(1000.**2), rpos3, lvel3]# lagrangian states set
+		fhstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,fCc_store,U*(1000.**2), rpos3, lvel3]# fahnestock formatted hamiltonian states set
+		hstateout=np.c_[tsett,rpos,rmom,cLa,cLb,C_store,Cc_store,U*(1000.**2), rpos3, lvel3]# hamiltonian states set
 		if flyby_toggle==1:
 			hyperbolicout=np.c_[rhyp,vhyp]# 3rd body state set
 		if helio_toggle==1:
